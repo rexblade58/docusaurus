@@ -222,6 +222,77 @@ function toTextContentTitle(contentTitle: string): string {
   return contentTitle.replace(/`(?<text>[^`]*)`/g, '$<text>');
 }
 
+/**
+ * Strips leading MDX `export` declarations (function components, const
+ * bindings, default exports) that can appear before the content title.
+ *
+ * MDX pages commonly define a component before the first heading, for
+ * example:
+ *
+ * ```mdx
+ * export function Author() {
+ *   return <a href={...}>{...}</a>;
+ * }
+ *
+ * # Privacy Policy
+ * ```
+ *
+ * Without stripping these declarations, the H1 title is never detected
+ * because the title regex is anchored to the start of the content.
+ *
+ * Brace counting is used (instead of a regex on a negated class) so that
+ * nested braces inside JSX or object literals are handled correctly.
+ */
+function stripMdxExportDeclarations(content: string): string {
+  const lines = content.split(/\r?\n/);
+  const keptLines: string[] = [];
+  let braceDepth = 0;
+  let inBlock = false;
+
+  for (const line of lines) {
+    if (!inBlock) {
+      // Detect a new export declaration at the start (allow leading spaces)
+      if (
+        /^\s*export\s+(?:default\s+)?(?:function\b|const\b|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{)/.test(
+          line,
+        )
+      ) {
+        // Single-line const binding: "export const foo = 'bar';"
+        if (/^\s*export\s+(?:default\s+)?const\b/.test(line) && line.includes(';')) {
+          continue;
+        }
+        inBlock = true;
+        for (const ch of line) {
+          if (ch === '{') {
+            braceDepth++;
+          } else if (ch === '}') {
+            braceDepth--;
+          }
+        }
+        if (braceDepth <= 0) {
+          inBlock = false; // Single-line block
+        }
+        continue;
+      }
+      keptLines.push(line);
+    } else {
+      for (const ch of line) {
+        if (ch === '{') {
+          braceDepth++;
+        } else if (ch === '}') {
+          braceDepth--;
+        }
+      }
+      if (braceDepth <= 0) {
+        inBlock = false; // Block closed
+      }
+      // Line belongs to the export block: skip it
+    }
+  }
+
+  return keptLines.join('\n');
+}
+
 type ParseMarkdownContentTitleOptions = {
   /**
    * If `true`, the matching title will be removed from the returned content.
@@ -258,15 +329,15 @@ export function parseMarkdownContentTitle(
   // We only need to detect import statements that will be parsed by MDX as
   // `import` nodes, as broken syntax can't render anyways. That means any block
   // that has `import` at the very beginning and surrounded by empty lines.
-  const contentWithoutImport = content
-    .replace(/^(?:import\s(?:.|\r?\n(?!\r?\n))*(?:\r?\n){2,})*/, '')
-    .trim();
+  const contentWithoutImportsExports = stripMdxExportDeclarations(
+    content.replace(/^(?:import\s(?:.|\r?\n(?!\r?\n))*(?:\r?\n){2,})*/, ''),
+  ).trim();
 
   const regularTitleMatch = /^#[ \t]+(?<title>[^ \t].*)(?:\r?\n|$)/.exec(
-    contentWithoutImport,
+    contentWithoutImportsExports,
   );
   const alternateTitleMatch = /^(?<title>.*)\r?\n=+(?:\r?\n|$)/.exec(
-    contentWithoutImport,
+    contentWithoutImportsExports,
   );
 
   const titleMatch = regularTitleMatch ?? alternateTitleMatch;

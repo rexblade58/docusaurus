@@ -433,6 +433,79 @@ Lorem Ipsum
     });
   });
 
+  it('parses markdown h1 title placed after an export function component', () => {
+    const markdown = dedent`
+          import PKG from '../../package.json';
+
+          export function Author() {
+            return (
+              <a href={\`mailto:\${PKG.author.email}\`} target="_blank" rel="noopener noreferrer">
+                {PKG.author.name}
+              </a>
+            );
+          }
+
+          # Privacy Policy
+
+          .
+
+          For any questions, please email <Author/>.
+        `;
+    expect(parseMarkdownContentTitle(markdown)).toEqual({
+      content: markdown,
+      contentTitle: 'Privacy Policy',
+    });
+  });
+
+  it('parses markdown h1 title placed after an export const binding', () => {
+    const markdown = dedent`
+          export const siteTitle = 'Docs';
+
+          # Markdown Title
+
+          Lorem Ipsum
+        `;
+    expect(parseMarkdownContentTitle(markdown)).toEqual({
+      content: markdown,
+      contentTitle: 'Markdown Title',
+    });
+  });
+
+  it('parses markdown setext title placed after an export function component', () => {
+    const markdown = dedent`
+          export function Author() {
+            return null;
+          }
+
+          Markdown Title
+          ==============
+
+          Lorem Ipsum
+        `;
+    expect(parseMarkdownContentTitle(markdown)).toEqual({
+      content: markdown,
+      contentTitle: 'Markdown Title',
+    });
+  });
+
+  it('does not parse h1 title if it is after content and an export block', () => {
+    const markdown = dedent`
+          export function Author() {
+            return null;
+          }
+
+          Lorem Ipsum
+
+          # Markdown Title 2
+
+          Lorem Ipsum
+        `;
+    expect(parseMarkdownContentTitle(markdown)).toEqual({
+      content: markdown,
+      contentTitle: undefined,
+    });
+  });
+
   it('parses markdown h1 title placed after various import declarations', () => {
     const markdown = `
 import DefaultComponent from '@site/src/components/Component1';
